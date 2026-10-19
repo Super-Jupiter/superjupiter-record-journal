@@ -1,0 +1,9 @@
+/build/
+/.pio/
+/.cache/
+*.exe
+*.o
+*.obj
+.DS_Store
+__pycache__/
+*.pyc

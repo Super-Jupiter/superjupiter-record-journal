@@ -1,0 +1,142 @@
+name: CI
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  library-lint:
+    name: Arduino library metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Download official linter and verify checksum
+        working-directory: ${{ runner.temp }}
+        run: |
+          curl -fsSL https://github.com/arduino/arduino-lint/releases/download/1.3.0/arduino-lint_1.3.0_Linux_64bit.tar.gz -o arduino-lint_1.3.0_Linux_64bit.tar.gz
+          curl -fsSL https://github.com/arduino/arduino-lint/releases/download/1.3.0/1.3.0-checksums.txt -o checksums.txt
+          grep '  arduino-lint_1.3.0_Linux_64bit.tar.gz$' checksums.txt | sha256sum --check --strict
+          tar -xzf arduino-lint_1.3.0_Linux_64bit.tar.gz
+      - name: Strict library registration checks
+        run: |
+          MODE=$(python3 tools/library_manager_mode.py)
+          "$RUNNER_TEMP/arduino-lint" --compliance strict --library-manager "$MODE" --project-type library "$GITHUB_WORKSPACE"
+      - name: Version and release consistency
+        env:
+          RELEASE_REF_TYPE: ${{ github.ref_type }}
+          RELEASE_REF_NAME: ${{ github.ref_name }}
+        run: |
+          python3 tools/check_release.py
+          if [ "$RELEASE_REF_TYPE" = tag ]; then
+            python3 tools/check_release.py --tag "$RELEASE_REF_NAME"
+          fi
+
+  host-tests:
+    name: Host tests (${{ matrix.compiler }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        compiler: [g++, clang++]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Strict C++11 tests with sanitisers
+        env:
+          CXX: ${{ matrix.compiler }}
+        run: |
+          mkdir -p build
+          "$CXX" -std=c++11 -Wall -Wextra -Wconversion -pedantic -Werror \
+            -fsanitize=address,undefined -fno-omit-frame-pointer -Isrc \
+            tests/test.cpp -o build/test-window
+          ./build/test-window
+          "$CXX" -std=c++11 -Wall -Wextra -Werror -Isrc tests/namespace_isolation.cpp -o build/test-namespace
+          ./build/test-namespace
+          if "$CXX" -std=c++11 -ffast-math -Isrc tests/namespace_isolation.cpp -o build/unsafe-math 2>build/unsafe-math.log; then
+            echo "Expected fast-math to be rejected"; exit 1
+          fi
+          grep -q 'requires IEEE non-finite checks' build/unsafe-math.log
+          "$CXX" -std=c++11 -Wall -Wextra -Werror -Isrc tools/replay.cpp -o build/replay
+          ./build/replay
+      - name: CMake integration
+        env:
+          CXX: ${{ matrix.compiler }}
+        run: |
+          cmake -S . -B build/cmake
+          cmake --build build/cmake
+          ctest --test-dir build/cmake --output-on-failure
+          python3 tools/verify_consumers.py
+
+  package-consumers:
+    name: Exported package consumers
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Prepare and inspect package
+        run: |
+          python3 -m pip install platformio==6.2.0
+          mkdir -p build
+          python3 -m platformio pkg pack -o build/SuperJupiterRecordJournal.tar.gz
+          python3 tools/check_release.py --archive build/SuperJupiterRecordJournal.tar.gz
+          python3 tools/verify_consumers.py --archive build/SuperJupiterRecordJournal.tar.gz
+          python3 tools/package_zip.py build/SuperJupiterRecordJournal.tar.gz build/SuperJupiterRecordJournal.zip
+          python3 tools/check_release.py --archive build/SuperJupiterRecordJournal.zip
+      - name: Compile PlatformIO archive consumer
+        run: python3 tools/verify_platformio.py --package build/SuperJupiterRecordJournal.tar.gz
+
+  arduino-builds:
+    name: Compile ${{ matrix.fqbn }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - core: esp32:esp32@3.3.12
+            fqbn: esp32:esp32:esp32
+          - core: esp32:esp32@3.3.12
+            fqbn: esp32:esp32:esp32s3
+          - core: esp32:esp32@3.3.12
+            fqbn: esp32:esp32:esp32c3
+          - core: arduino:avr@1.8.8
+            fqbn: arduino:avr:uno
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: arduino/setup-arduino-cli@81d310742121c928ea9c8bbd407b4217b432ae02 # v2.0.0
+        with:
+          version: 1.5.1
+      - name: Install board core
+        env:
+          CORE: ${{ matrix.core }}
+        run: |
+          arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core install "$CORE" --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+      - name: Compile examples
+        env:
+          FQBN: ${{ matrix.fqbn }}
+          ARDUINO_LIBRARY_ENABLE_UNSAFE_INSTALL: "true"
+        run: |
+          arduino-cli compile --fqbn "$FQBN" --library . examples/Minimal
+      - name: Install ZIP and compile a clean consumer
+        env:
+          FQBN: ${{ matrix.fqbn }}
+          ARDUINO_DIRECTORIES_USER: ${{ runner.temp }}/superjupiter-user
+          ARDUINO_LIBRARY_ENABLE_UNSAFE_INSTALL: "true"
+        run: |
+          python3 -m pip install platformio==6.2.0
+          python3 -m platformio pkg pack -o "$RUNNER_TEMP/package.tar.gz"
+          python3 tools/package_zip.py "$RUNNER_TEMP/package.tar.gz" "$RUNNER_TEMP/package.zip"
+          arduino-cli lib install --zip-path "$RUNNER_TEMP/package.zip"
+          arduino-cli compile --fqbn "$FQBN" "$ARDUINO_DIRECTORIES_USER/libraries/SuperJupiterRecordJournal/examples/Minimal"
