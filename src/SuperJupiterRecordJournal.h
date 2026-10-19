@@ -5,13 +5,30 @@
 #if defined(__FAST_MATH__) || (defined(__FINITE_MATH_ONLY__) && __FINITE_MATH_ONLY__ > 0)
 #error "SuperJupiter requires IEEE non-finite checks; disable fast-math"
 #endif
-#include <cmath>
-#include <cstddef>
-#include <cstdint>
-#include <limits>
+#include <float.h>
+#include <math.h>
+#include <stddef.h>
+#include <stdint.h>
 #define SUPERJUPITER_RECORD_JOURNAL_VERSION "0.1.0"
 namespace superjupiter {
 namespace record_journal {
+
+namespace detail {
+inline bool finite(double value) { return value == value && value >= -DBL_MAX && value <= DBL_MAX; }
+inline double oneMinusExpNegative(double ratio) {
+  // Stable at small elapsed/tau without requiring AVR's unavailable expm1.
+  if (ratio < 0.01) {
+    double term = ratio, total = ratio;
+    for (unsigned n = 2; n <= 12; ++n) {
+      term *= -ratio / n;
+      total += term;
+    }
+    return total;
+  }
+  return 1 - ::exp(-ratio);
+}
+} // namespace detail
+
 // Storage adapters must bounds-check, report failures and implement real durability in sync().
 class Storage {
 public:
