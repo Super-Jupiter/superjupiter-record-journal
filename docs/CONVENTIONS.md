@@ -13,7 +13,7 @@ These conventions describe this independently installable component. A template 
 | CMake | Namespaced consumer target | `SuperJupiter::RecordJournal` |
 | API | PascalCase types, lowerCamelCase members | `RecordJournal`, `sampledAtMs` |
 | Units | Explicit field suffixes, documented value units | `Ms`, `PerSecond` |
-| Version | Immutable `vMAJOR.MINOR.PATCH` tags | `v0.1.0` |
+| Version | Immutable `vMAJOR.MINOR.PATCH` tags | Current `library.json` version |
 | Evidence | Separate host tests, board compilation and physical tests | Hardware pending |
 
 ## Design and compatibility
@@ -33,7 +33,7 @@ storage adapters and application domain models remain outside this core.
 0.x is an explicitly evolving preview. Document breaking migrations and increase
 the minor version. Patches preserve the documented API. At 1.0, adopt normal
 major-version compatibility guarantees. Do not rename an indexed package or
-retag a published release. `@0.1.0` is exact; `@^0.1.0` permits compatible updates.
+retag a published release. For a chosen version, `@MAJOR.MINOR.PATCH` is exact; `@^MAJOR.MINOR.PATCH` permits compatible updates. Replace these placeholders with numbers from the manifest.
 
 ## Build and installation
 
@@ -60,14 +60,14 @@ or equivalent assumptions. Such options can invalidate NaN/Inf detection. AVR
 
 1. Update both manifests, the CMake version, public version macro, changelog,
    current installation examples and validation record together.
-2. Run `python3 tools/check_release.py --tag v0.1.0`. This validates consistency;
+2. Run `python3 tools/check_release.py`. This validates consistency;
    it does not create a tag or publish anything.
 3. Run strict C++11 GCC/Clang tests with sanitizers, namespace isolation, CMake
    subproject/relocated install consumers, fast-math rejection and the board matrix.
 4. Run registered-library lint with `--library-manager update`. Use `submit`
    only before a new library has been added to the official index. CI reads the
    actual official index to choose the appropriate mode and fails on fetch errors.
-5. Run `pio pkg pack -o build/SuperJupiterRecordJournal-0.1.0.tar.gz` and check it
+5. Run `pio pkg pack -o build/SuperJupiterRecordJournal.tar.gz` and check it
    with `python3 tools/check_release.py --archive <file>`. Test archive consumers
    with `python3 tools/verify_consumers.py --archive <file>` and PlatformIO.
 6. Review the diff and CI. Run the version checker with `--require-clean` after
@@ -82,3 +82,10 @@ or equivalent assumptions. Such options can invalidate NaN/Inf detection. AVR
 Pinned CI actions and monthly Dependabot proposals are reviewed, not automatically
 merged. Bug reports need version/configuration/input/expected/actual behaviour;
 security reports use the private contact in SECURITY.md.
+
+
+## Version-neutral maintenance commands
+
+The manifest is authoritative for the current version. The checker above validates the current checkout; pass `--tag v<version>` only after replacing the placeholder with that exact manifest version. For historical packages, inspect and test the matching immutable tag, not a later main branch. Dated release archives preserve the instructions that shipped with them; this main-branch maintenance guide can receive documentation-only corrections without retagging packages.
+
+Hardware validation pending.
