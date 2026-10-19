@@ -60,6 +60,10 @@ jobs:
           ./build/test-window
           "$CXX" -std=c++11 -Wall -Wextra -Werror -Isrc tests/namespace_isolation.cpp -o build/test-namespace
           ./build/test-namespace
+          "$CXX" -std=c++11 -Wall -Wextra -Wconversion -pedantic -Werror \
+            -fsanitize=address,undefined -fno-omit-frame-pointer -Isrc \
+            tests/review_regressions.cpp -o build/test-review
+          ./build/test-review
           if "$CXX" -std=c++11 -ffast-math -Isrc tests/namespace_isolation.cpp -o build/unsafe-math 2>build/unsafe-math.log; then
             echo "Expected fast-math to be rejected"; exit 1
           fi

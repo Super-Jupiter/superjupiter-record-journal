@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(SuperJupiterRecordJournal VERSION 0.1.0 LANGUAGES CXX)
+project(SuperJupiterRecordJournal VERSION 0.1.1 LANGUAGES CXX)
 
 set(_superjupiter_record_journal_top_level OFF)
 if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
@@ -19,6 +19,9 @@ target_compile_features(SuperJupiterRecordJournal INTERFACE cxx_std_11)
 
 if(SUPERJUPITER_RECORD_JOURNAL_BUILD_TESTS)
   enable_testing()
+  add_executable(superjupiter-record-journal-review tests/review_regressions.cpp)
+  target_link_libraries(superjupiter-record-journal-review PRIVATE SuperJupiter::RecordJournal)
+  add_test(NAME superjupiter-record-journal-review COMMAND superjupiter-record-journal-review)
   add_executable(superjupiter-record-journal-tests tests/test.cpp)
   target_link_libraries(superjupiter-record-journal-tests PRIVATE SuperJupiter::RecordJournal)
   add_test(NAME superjupiter-record-journal-tests COMMAND superjupiter-record-journal-tests)

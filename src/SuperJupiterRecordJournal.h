@@ -2,34 +2,18 @@
 // Copyright (c) 2026 SuperJupiter
 #ifndef SUPERJUPITER_RECORD_JOURNAL_H
 #define SUPERJUPITER_RECORD_JOURNAL_H
-#if defined(__FAST_MATH__) || (defined(__FINITE_MATH_ONLY__) && __FINITE_MATH_ONLY__ > 0)
+#if defined(__FAST_MATH__) ||                                                  \
+    (defined(__FINITE_MATH_ONLY__) && __FINITE_MATH_ONLY__ > 0)
 #error "SuperJupiter requires IEEE non-finite checks; disable fast-math"
 #endif
-#include <float.h>
-#include <math.h>
 #include <stddef.h>
 #include <stdint.h>
-#define SUPERJUPITER_RECORD_JOURNAL_VERSION "0.1.0"
+#define SUPERJUPITER_RECORD_JOURNAL_VERSION "0.1.1"
 namespace superjupiter {
 namespace record_journal {
 
-namespace detail {
-inline bool finite(double value) { return value == value && value >= -DBL_MAX && value <= DBL_MAX; }
-inline double oneMinusExpNegative(double ratio) {
-  // Stable at small elapsed/tau without requiring AVR's unavailable expm1.
-  if (ratio < 0.01) {
-    double term = ratio, total = ratio;
-    for (unsigned n = 2; n <= 12; ++n) {
-      term *= -ratio / n;
-      total += term;
-    }
-    return total;
-  }
-  return 1 - ::exp(-ratio);
-}
-} // namespace detail
-
-// Storage adapters must bounds-check, report failures and implement real durability in sync().
+// Storage adapters must bounds-check, report failures and implement real
+// durability in sync().
 class Storage {
 public:
   virtual bool read(size_t offset, uint8_t *destination, size_t length) = 0;
@@ -57,18 +41,28 @@ inline uint32_t get32(const uint8_t *p) {
   return value;
 }
 
-enum class Status { Ok, Full, NotRecovered, IoError, Corrupt, InvalidIndex };
+enum class Status {
+  Ok,
+  Full,
+  NotRecovered,
+  IoError,
+  Corrupt,
+  InvalidIndex,
+  StaleState
+};
 template <size_t Payload, size_t Slots> class RecordJournal {
   static_assert(Payload > 0 && Payload <= 1024 && Slots > 0 && Slots <= 65535,
                 "RecordJournal requires bounded positive sizes");
-  static_assert(Slots <= SIZE_MAX / (Payload + 17), "RecordJournal storage size exceeds size_t");
+  static_assert(Slots <= SIZE_MAX / (Payload + 17),
+                "RecordJournal storage size exceeds size_t");
   static const size_t Bytes = Payload + 17;
   Storage &storage_;
   size_t base_, count_;
   bool ready_;
   bool valid(const uint8_t *b, size_t slot) const {
-    return b[0] == 0x53 && b[1] == 0x4a && b[2] == 1 && b[3] == 0 && get32(b + 4) == slot &&
-           get32(b + 8) == Payload && get32(b + 12 + Payload) == checksum(b, 12 + Payload);
+    return b[0] == 0x53 && b[1] == 0x4a && b[2] == 1 && b[3] == 0 &&
+           get32(b + 4) == slot && get32(b + 8) == Payload &&
+           get32(b + 12 + Payload) == checksum(b, 12 + Payload);
   }
 
 public:
@@ -103,6 +97,17 @@ public:
       return Status::IoError;
     if (count_ == Slots)
       return Status::Full;
+    uint8_t existing[Bytes];
+    if (!storage_.read(base_ + count_ * Bytes, existing, Bytes)) {
+      ready_ = false;
+      return Status::IoError;
+    }
+    if (existing[Bytes - 1] != 0 && existing[Bytes - 1] != 255) {
+      ready_ = false;
+      return existing[Bytes - 1] == 0xa5 && valid(existing, count_)
+                 ? Status::StaleState
+                 : Status::Corrupt;
+    }
     uint8_t b[Bytes] = {};
     b[0] = 0x53;
     b[1] = 0x4a;

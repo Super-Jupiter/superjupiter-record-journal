@@ -22,7 +22,21 @@ def normalised_files(files):
         if len({PurePosixPath(n).parts[0] for n in result})!=1: raise ValueError('Ambiguous archive root')
         result={n.split('/',1)[1]:d for n,d in result.items() if '/' in n}
     return result
+
+def validate_review_contract():
+    import re
+    manifest=json.loads((ROOT/'library.json').read_text())
+    header=(ROOT/'src'/manifest['headers'][0]).read_text()
+    versions=re.findall(r'^#define\s+SUPERJUPITER_\w+_VERSION\s+"([^"]+)"',header,re.M)
+    assert versions==[manifest['version']], 'Public version macro mismatch'
+    assert all(a['name']=='SuperJupiter' for a in manifest['authors'])
+    assert manifest['license']=='MIT'
+    assert 'hardware validation pending' in (ROOT/'README.md').read_text().lower()
+    assert (ROOT/'docs/INTEROPERABILITY.md').is_file()
+    assert (ROOT/'tests/review_regressions.cpp').is_file()
+
 def main():
+    validate_review_contract()
     p=argparse.ArgumentParser();p.add_argument('--tag');p.add_argument('--archive',type=Path);p.add_argument('--require-clean',action='store_true');a=p.parse_args()
     m=json.loads((ROOT/'library.json').read_text());name=m['name'];v=m['version']
     props=dict(x.split('=',1) for x in (ROOT/'library.properties').read_text().splitlines() if '=' in x)
@@ -35,7 +49,7 @@ def main():
     if a.require_clean: assert not subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True).strip()
     if a.archive:
         files=normalised_files(package_files(a.archive))
-        required=['library.json','library.properties','README.md','LICENSE','CMakeLists.txt',
+        required=['tests/review_regressions.cpp','docs/INTEROPERABILITY.md','library.json','library.properties','README.md','LICENSE','CMakeLists.txt',
             'src/'+m['headers'][0],'docs/API.md','docs/CONVENTIONS.md','docs/VALIDATION.md',
             'docs/MIGRATION.md','examples/Minimal/Minimal.ino','tests/test.cpp','tests/consumer/main.cpp',
             'tests/consumer/CMakeLists.txt','tests/namespace_isolation.cpp','tools/check_release.py']
