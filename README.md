@@ -1,5 +1,33 @@
 # SuperJupiter RecordJournal
 
+<!-- SUPERJUPITER-CONSOLIDATION-MIGRATION:START -->
+## Consolidated library available
+
+For new projects, start with **[SuperJupiter Embedded Reliability](https://github.com/Super-Jupiter/superjupiter-embedded-reliability)**. This standalone package and its published releases remain available. Existing installations need no change.
+
+If migrating with PlatformIO, replace the standalone dependency with:
+
+```ini
+lib_deps = superjupiter/SuperJupiterEmbeddedReliability@0.1.0
+```
+
+Replace this standalone include:
+
+```cpp
+#include <SuperJupiterRecordJournal.h>
+```
+
+with this consolidated include:
+
+```cpp
+#include <SuperJupiter/EmbeddedReliability/RecordJournal.h>
+```
+
+The component namespace and behaviour are preserved from standalone **0.1.1**. If using an earlier version, review its API migration requirements first. Use one implementation of this component per application; do not mix standalone and consolidated copies.
+
+See the [consolidated migration guide](https://github.com/Super-Jupiter/superjupiter-embedded-reliability/blob/v0.1.0/docs/MIGRATION.md) and consolidated README for Arduino/CMake installation. **Hardware validation pending.**
+<!-- SUPERJUPITER-CONSOLIDATION-MIGRATION:END -->
+
 Append-only bounded records with CRC checks and interrupted-write recovery.
 
 **Version 0.1.1: evolving preview. Hardware validation pending.**
